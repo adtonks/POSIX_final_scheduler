@@ -13,15 +13,38 @@
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
-#include <fcntl.h>
 #include <assert.h>
+#include "scheduler.h"
 
-int check_dequeue(int PID_arr[]) {
-	return(1);
+int check_dequeue(int PID_arr[], int fd, int stored) {
+	printf("dequeue\n");
+}
+
+int enqueue(int PID_arr[], int fd, int stored) {
+	int PID, read_suc;
+	char buffer[256];
+	char *token;
+	lseek(fd, 0, SEEK_SET);
+	read_suc = read(fd, buffer, 17);
+	if(read_suc == 17) {
+	token = strtok(buffer, " ");
+	/* check that this isn't deenroll signal */
+	if(strcmp(token, "XENROLLX") == 0) {
+		token = strtok(NULL, " ");
+		PID = atoi(token);
+		printf("Enqueue process %d\n", PID);
+		return(1);
+	} else {
+		return(0);
+	}
+	} else {
+		return(0);
+	}
 }
 
 int main(int argc, char const *argv[]) {
-	int i, stored, curr;
+	int i, j, stored, curr;
+	int fd;
 	int rrfifo = 0;
 	int rrlifo = 0;
 	int rrandom = 0;
@@ -59,11 +82,20 @@ int main(int argc, char const *argv[]) {
 	int PID_arr[slots];
 	for(i=0; i<slots; i++)
 		PID_arr[i] = 541;
-	stored = slots;
+	stored = 0;
 	/* create pipe */
 	assert(mkfifo(fifo_path, 0666) == 0);
+	fd = open(fifo_path, O_RDONLY, 0666);
 	/* wait for array to be filled */
-
+	while(stored<4) {
+		if(enqueue(PID_arr, fd, stored))
+			stored++;
+	}
+	/*
+	while(enqueue(PID_arr, fd, stored)) {
+		sleep(1);
+	}
+	*/
 	/* run the scheduler */
 	srand(time(NULL));
 	while(0<stored) {
@@ -76,16 +108,16 @@ int main(int argc, char const *argv[]) {
 				curr = rand() % slots;
 			if(PID_arr[curr] != -1) {
 				/* run process */
-
-				sleep(1);
-				/* pause process */
-
+				for(j=0; j<10; j++) {
+				usleep(800000);
 				/* CHECK FOR DEQUEUE */
-				if(check_dequeue(PID_arr))
-					stored--;
+				if(check_dequeue(PID_arr, fd, stored))
+					break;
+				}
 			}
 		}
 	}
-
+	unlink(fifo_path);
+	close(fd);
 	return(0);
 }
