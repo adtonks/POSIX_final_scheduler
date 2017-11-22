@@ -66,7 +66,8 @@ int main(int argc, char const *argv[]) {
 	}
 	/* create process array */
 	int PID_arr[slots];
-	int PID_info[2][slots];
+	int PID_info_1[slots];
+	int PID_info_2[slots];
 	for(i=0; i<slots; i++)
 		PID_arr[i] = -1;
 	stored = 0;
@@ -85,9 +86,9 @@ int main(int argc, char const *argv[]) {
 	/* copy PID into PID info array */
 	for(i=0; i<slots; i++) {
 		/* first element holds PID */
-		PID_info[1][i] = PID_arr[i];
+		PID_info_1[i] = PID_arr[i];
 		/* second element holds time slices used */
-		PID_info[2][i] = 0;
+		PID_info_2[i] = 0;
 	}
 	printf("Process enqueue complete\n");
 	srand(time(NULL));
@@ -105,7 +106,7 @@ int main(int argc, char const *argv[]) {
 				if(print_debug)
 					printf("Start process %d\n", PID);
 				kill(PID, SIGCONT);
-				PID_info[2][curr]++;
+				PID_info_2[curr]++;
 				for(j=0; (j<10) && (PID_arr[curr] != -1); j++) {
 					usleep(100000);
 					/* check for dequeue */
@@ -115,7 +116,7 @@ int main(int argc, char const *argv[]) {
 							if(PID_arr[k] == PID_proc) {
 								PID_arr[k] = -1;
 								stored--;
-								PID_info[2][k] = -1;
+								PID_info_2[k] = -1;
 								/* use k as flag after loop */
 								k = -1;
 								break;
@@ -148,8 +149,8 @@ int main(int argc, char const *argv[]) {
 	/* print summary information */
 	printf("### BEGIN SUMMARY ###\n");
 	for(i=0; i<slots; i++) {
-		if(PID_info[2][i] != -1) {
-			printf("Process %d ran and successfully finished using %d time slices\n", PID_info[1][i],PID_info[2][i]);
+		if(PID_info_2[i] != -1) {
+			printf("Process %d ran and successfully finished using %d time slices\n", PID_info_1[i],PID_info_2[i]);
 			finished++;
 		}
 	}
