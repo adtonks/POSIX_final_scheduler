@@ -16,11 +16,29 @@
 #include <assert.h>
 #include "scheduler.h"
 
-int check_dequeue(int PID_arr[], int fd, int stored) {
-	printf("dequeue\n");
+int check_dequeue(int fd, int stored) {
+	int PID, read_suc;
+	char buffer[256];
+	char *token;
+	lseek(fd, 0, SEEK_SET);
+	read_suc = read(fd, buffer, 17);
+	if(read_suc == 17) {
+	token = strtok(buffer, " ");
+	/* check that this isn't enroll signal */
+	if(strcmp(token, "DEENROLL") == 0) {
+		token = strtok(NULL, " ");
+		PID = atoi(token);
+		printf("Dequeue process %d\n", PID);
+		return(PID);
+	} else {
+		return(0);
+	}
+	} else {
+		return(0);
+	}
 }
 
-int enqueue(int PID_arr[], int fd, int stored) {
+int enqueue(int fd, int stored) {
 	int PID, read_suc;
 	char buffer[256];
 	char *token;
@@ -33,7 +51,7 @@ int enqueue(int PID_arr[], int fd, int stored) {
 		token = strtok(NULL, " ");
 		PID = atoi(token);
 		printf("Enqueue process %d\n", PID);
-		return(1);
+		return(PID);
 	} else {
 		return(0);
 	}
@@ -43,13 +61,18 @@ int enqueue(int PID_arr[], int fd, int stored) {
 }
 
 int main(int argc, char const *argv[]) {
-	int i, j, stored, curr;
+	int i, j, k, stored, curr, PID, PID_proc;
 	int fd;
 	int rrfifo = 0;
 	int rrlifo = 0;
 	int rrandom = 0;
 	int slots = -1;
 	char *fifo_path = "/tmp/FIFO_pipe";
+	if(access(fifo_path, F_OK) != -1)
+		if(remove(fifo_path) != 0) {
+			printf("Please delete the pipe on filesystem\n");
+			return(1);
+		}
 	if(argc != 4) {
 		printf("Command line arguments incorrect\n");
 		return(1);
@@ -66,7 +89,7 @@ int main(int argc, char const *argv[]) {
 		} else if(strcmp(argv[i], "-rrfifo") == 0) {
 			rrfifo = 1;
 		} else if(strcmp(argv[i], "-rrlifo") == 0) {
-			rrfifo = 1;
+			rrlifo = 1;
 		} else if(strcmp(argv[i], "-rrandom") == 0) {
 			rrandom = 1;
 		} else {
@@ -81,39 +104,58 @@ int main(int argc, char const *argv[]) {
 	/* create process array */
 	int PID_arr[slots];
 	for(i=0; i<slots; i++)
-		PID_arr[i] = 541;
+		PID_arr[i] = -1;
 	stored = 0;
 	/* create pipe */
 	assert(mkfifo(fifo_path, 0666) == 0);
-	fd = open(fifo_path, O_RDONLY, 0666);
+	fd = open(fifo_path, O_RDONLY | O_NONBLOCK, 0666);
 	/* wait for array to be filled */
-	while(stored<4) {
-		if(enqueue(PID_arr, fd, stored))
+	printf("Begin process enqueue\n");
+	while(stored<slots) {
+		if(PID_proc = enqueue(fd, stored)) {
+			PID_arr[stored] = PID_proc;
+			kill(PID_proc, SIGSTOP);
 			stored++;
+		}
 	}
-	/*
-	while(enqueue(PID_arr, fd, stored)) {
-		sleep(1);
-	}
-	*/
-	/* run the scheduler */
+	printf("Process enqueue complete\n");
 	srand(time(NULL));
 	while(0<stored) {
 		for(i=0; (i<slots) && (0<stored); i++) {
 			if(rrfifo)
 				curr = i;
-			else if(rrlifo)
+			else if(rrlifo){
 				curr = slots-1-i;
-			else if(rrandom)
+			}else if(rrandom)
 				curr = rand() % slots;
-			if(PID_arr[curr] != -1) {
+			PID = PID_arr[curr];
+			if(PID != -1) {
 				/* run process */
+				printf("Start process %d\n", PID);
+				kill(PID, SIGCONT);
 				for(j=0; j<10; j++) {
-				usleep(800000);
-				/* CHECK FOR DEQUEUE */
-				if(check_dequeue(PID_arr, fd, stored))
-					break;
+					usleep(100000);
+					/* CHECK FOR DEQUEUE */
+					if(PID_proc = check_dequeue(fd, stored)) {
+						/* only this process should be asking for deenroll */
+						printf("Process %d requests dequeue\n", PID_proc);
+						for(k=0; k<slots; k++) {
+							if(PID_arr[k] == PID_proc) {
+								PID_arr[k] = -1;
+								stored--;
+								k = -1;
+								break;
+							}
+						}
+						if(k == -1) {
+							continue;
+						} else {
+							printf("Deenroll requested by unenrolled process\n");
+						}
+					}
 				}
+				printf("Pause process %d\n", PID);
+				kill(PID, SIGSTOP);
 			}
 		}
 	}
